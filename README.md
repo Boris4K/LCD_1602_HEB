@@ -1,3 +1,7 @@
+# LCD_1602_HEB
+Library for hebrew font text on LCD 16x2
+
+Original Readme file
 # LCD_1602_RUS
 Arduino LCD 16x02 display with I2C interface RUSSIAN with NO CYRILLIC symbols set
 
