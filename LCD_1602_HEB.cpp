@@ -1,10 +1,14 @@
-#include <arduino.h>
+#include <Arduino.h>
 #include <avr/pgmspace.h>
 #include "LCD_1602_HEB.h"
 
-LCD_1602_HEB :: LCD_1602_HEB(uint8_t lcd_Addr,uint8_t lcd_cols,uint8_t lcd_rows) : LiquidCrystal_I2C (lcd_Addr, lcd_cols, lcd_rows)
+wchar_t char_utf8[] = L" ";
+
+LCD_1602_HEB :: LCD_1602_HEB(uint8_t lcd_Addr, uint8_t lcd_cols, uint8_t lcd_rows) : LiquidCrystal_I2C (lcd_Addr, lcd_cols, lcd_rows)
 {
    symbol_index = 0;
+  cursor_col = 0;
+  cursor_row = 0;
    ResetAllIndex();//Сброс значений индексов (неинициализированы = 255)
 }
 void LCD_1602_HEB::clear()
@@ -26,8 +30,28 @@ uint8_t LCD_1602_HEB::getCursorRow()
 {
   return cursor_row;
 }
-void LCD_1602_HEB::print(const char *str){
-	cursor_col += LiquidCrystal_I2C::print(str);
+uint8_t LCD_1602_HEB::mbtowc(wchar_t *_chr, char *_str, uint8_t mb_num) {
+  if (mb_num != 2) return 0;
+  if ((_str[0] & 0xC0) == 0xC0 && (_str[1] & 0x80) == 0x80) {
+    *_chr = ((_str[0] & 0x1F) << 6) + (_str[1] & 0x3F);
+    return 2;
+  }
+  else {
+    *_chr = _str[0];
+    return 1;
+  }
+}
+void LCD_1602_HEB::print(const char *c_str){
+  wchar_t _str;
+  int current_char = 0;
+  int size = strlen(c_str);
+
+  while (current_char < size)
+  {
+    current_char += mbtowc(&_str, (char *)c_str + current_char, 2);
+    printwc(_str);
+    cursor_col++;
+  }
 }
 void LCD_1602_HEB::print(int val, int base){
   cursor_col += LiquidCrystal_I2C::print(val, base);
@@ -48,29 +72,101 @@ void LCD_1602_HEB::print(unsigned char val, int base){
   cursor_col += LiquidCrystal_I2C::print(val, base);
 }
 void LCD_1602_HEB::print(const String &str){
-  cursor_col += LiquidCrystal_I2C::print(str);
+  wchar_t _str;
+  const char *c_str = str.c_str();
+  int current_char = 0;
+  int size = str.length();
+
+  while (current_char < size)
+  {
+    current_char += mbtowc(&_str, (char*)c_str + current_char, 2);
+    printwc(_str);
+    cursor_col++;
+  }
 }
 void LCD_1602_HEB::print(double val, int base){
   cursor_col += LiquidCrystal_I2C::print(val, base);
 }
 void LCD_1602_HEB::print(const wchar_t *_str){
-  uint8_t heb_[8];
   int current_char  = 0;
   int size = 0;
  
   //Определяем длину строки (количество символов)
-  while(_str[size] != NULL)
+  while (_str[size] != 0)
   {
     size++;
   }
   
   while(current_char < size)
   {
-    switch(_str[current_char])
+    printwc(_str[current_char]);
+    current_char++;
+    cursor_col++;
+  }
+ 
+}
+void LCD_1602_HEB::CharSetToLCD(uint8_t *array, uint8_t *index)
+{
+  uint8_t x,y;
+
+  if(*index == 255)// Если символ еще не создан, то создаем
+  {
+    x = getCursorCol();
+    y = getCursorRow();
+    createChar(symbol_index, (uint8_t *)array);// Создаем символ на текущем (по очереди) месте в знакогенераторе (от 0 до MAX_SYMBOL_COUNT)
+    setCursor(x,y);
+    write(symbol_index);// Выводим символ на экран
+    //Запомианем, что букве соответствует определенный индекс
+    *index = symbol_index;
+    symbol_index++;
+    if (symbol_index >= MAX_SYMBOL_COUNT)
     {
-      //Русский алфавит, требующий новых символов
-      //Единовременно может быть заменено только 8 символов
-      case 0x05D0: //א
+      symbol_index = 0;
+      ResetAllIndex();
+    }
+  }
+  else   //Иначе печатаем уже существующий
+    write(*index);
+}
+void LCD_1602_HEB::ResetAllIndex()
+{
+  symbol_index = 0;
+  index_heb_alef=255;
+  index_heb_bet=255;
+  index_heb_gimel=255;
+  index_heb_dalet=255;
+  index_heb_hey=255;
+  index_heb_vav=255;
+  index_heb_zain=255;
+  index_heb_het=255;
+  index_heb_tet=255;
+  index_heb_yod=255;
+  index_heb_kaf_sofit=255;
+  index_heb_kaf=255;
+  index_heb_lamed=255;
+  index_heb_mem_sofit=255;
+  index_heb_mem=255;
+  index_heb_nun_sofit=255;
+  index_heb_nun=255;
+  index_heb_samech=255;
+  index_heb_ayin=255;
+  index_heb_peh_sofit=255;
+  index_heb_peh=255;
+  index_heb_zadik_sofit=255;
+  index_heb_zadik=255;
+  index_heb_kuf=255;
+  index_heb_resh=255;
+  index_heb_shin=255;
+  index_heb_tav=255;
+}
+
+void LCD_1602_HEB::printwc(const wchar_t _chr) {
+  uint8_t heb_[8];
+  switch (_chr)
+  {
+    //Русский алфавит, требующий новых символов
+    //Единовременно может быть заменено только 8 символов
+   case 0x05D0: //א
         memcpy_PF(heb_, (uint32_t)heb_alef, 8);
         CharSetToLCD((uint8_t *)heb_, &index_heb_alef);
       break;
@@ -178,70 +274,29 @@ void LCD_1602_HEB::print(const wchar_t *_str){
         memcpy_PF(heb_, (uint32_t)heb_tav, 8);
         CharSetToLCD((uint8_t *)heb_, &index_heb_tav);
       break;
-      case 0x00B0: //Знак градуса
+      case 0x00B0: //degree sign
         LiquidCrystal_I2C::write(223);
       break;
-      //Английский алфавит без изменения
+      //English characters are unchanged
       default:
-        LiquidCrystal_I2C::print((char)_str[current_char]);
+      	LiquidCrystal_I2C::print((char)_chr);
       break;
     }
-    current_char++;
-    cursor_col++;
-  }
- 
 }
-void LCD_1602_HEB::CharSetToLCD(uint8_t *array, uint8_t *index)
-{
-  uint8_t x,y;
 
-  if(*index == 255)// Если символ еще не создан, то создаем
-  {
-    x = getCursorCol();
-    y = getCursorRow();
-    createChar(symbol_index, (uint8_t *)array);// Создаем символ на текущем (по очереди) месте в знакогенераторе (от 0 до MAX_SYMBOL_COUNT)
-    setCursor(x,y);
-    write(symbol_index);// Выводим символ на экран
-    //Запомианем, что букве соответствует определенный индекс
-    *index = symbol_index;
-    symbol_index++;
-    if(symbol_index >= MAX_SYMBOL_COUNT)
-    	symbol_index = 0;
-  }
-  else   //Иначе печатаем уже существующий
-    write(*index);
-}
-void LCD_1602_HEB::ResetAllIndex()
+//Перевод символа из кодировки ASCII в UTF-8 (для печати расширенных русских символов на LCD)
+wchar_t *LCD_1602_HEB::asciiutf8(unsigned char ascii)
 {
-  index_heb_alef=255;
-  index_heb_bet=255;
-  index_heb_gimel=255;
-  index_heb_dalet=255;
-  index_heb_hey=255;
-  index_heb_vav=255;
-  index_heb_zain=255;
-  index_heb_het=255;
-  index_heb_tet=255;
-  index_heb_yod=255;
-  index_heb_kaf_sofit=255;
-  index_heb_kaf=255;
-  index_heb_lamed=255;
-  index_heb_mem_sofit=255;
-  index_heb_mem=255;
-  index_heb_nun_sofit=255;
-  index_heb_nun=255;
-  index_heb_samech=255;
-  index_heb_ayin=255;
-  index_heb_peh_sofit=255;
-  index_heb_peh=255;
-  index_heb_zadik_sofit=255;
-  index_heb_zadik=255;
-  index_heb_kuf=255;
-  index_heb_resh=255;
-  index_heb_shin=255;
-  index_heb_tav=255;
+ if ((ascii >= 224) && (ascii <= 224+22+5)) //hebrew letters
+  {
+    *char_utf8 = ascii + 1264;
+  }
+  else *char_utf8 = ascii;
+
+  return char_utf8;
 }
-//Б
+
+//alef
 const byte heb_alef[8] PROGMEM = {
   0b00000,
   0b10010,
@@ -252,7 +307,7 @@ const byte heb_alef[8] PROGMEM = {
   0b10001,
   0b00000
 };
-//Г
+//bet
 const byte heb_bet[8] PROGMEM = {
   0b00000,
   0b11110,
@@ -263,7 +318,7 @@ const byte heb_bet[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//Д
+//gimel
 const byte heb_gimel[8] PROGMEM = {
   0b00000,
   0b01110,
@@ -274,7 +329,7 @@ const byte heb_gimel[8] PROGMEM = {
   0b10010,
   0b00000
 };
-//Ж
+//dalet
 const byte heb_dalet[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -285,7 +340,7 @@ const byte heb_dalet[8] PROGMEM = {
   0b00010,
   0b00000
 };
-//З
+//hey
 const byte heb_hey[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -296,7 +351,7 @@ const byte heb_hey[8] PROGMEM = {
   0b10001,
   0b00000
 };
-//И
+//vav
 const byte heb_vav[8] PROGMEM = {
   0b00000,
   0b01100,
@@ -307,7 +362,7 @@ const byte heb_vav[8] PROGMEM = {
   0b00100,
   0b00000
 };
-//Й
+//zain
 const byte heb_zain[8] PROGMEM = {
   0b11000,
   0b00110,
@@ -318,7 +373,7 @@ const byte heb_zain[8] PROGMEM = {
   0b00100,
   0b00000
 };
-//Л
+//het
 const byte heb_het[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -329,7 +384,7 @@ const byte heb_het[8] PROGMEM = {
   0b10001,
   0b00000
 };
-//П
+//tet
 const byte heb_tet[8] PROGMEM = {
   0b00000,
   0b10111,
@@ -340,7 +395,7 @@ const byte heb_tet[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//У
+//yod
 const byte heb_yod[8] PROGMEM = {
   0b00000,
   0b01110,
@@ -351,7 +406,7 @@ const byte heb_yod[8] PROGMEM = {
   0b00000,
   0b00000
 };
-//Ф
+//kaf sofit
 const byte heb_kaf_sofit[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -362,7 +417,7 @@ const byte heb_kaf_sofit[8] PROGMEM = {
   0b00001,
   0b00001
 };
-//Ц
+//kaf
 const byte heb_kaf[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -373,21 +428,21 @@ const byte heb_kaf[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//Ч
+//lamed
 const byte heb_lamed[8] PROGMEM = {
   0b01000,
   0b01000,
   0b01111,
   0b00001,
   0b00001,
-  0b00001,
-  0b01110,
+  0b00010,
+  0b00100,
   0b00000
 };
-//Щ
+//mem sofit
 const byte heb_mem_sofit[8] PROGMEM = {
   0b00000,
-  0b11111,
+  0b11110,
   0b10001,
   0b10001,
   0b10001,
@@ -395,7 +450,7 @@ const byte heb_mem_sofit[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//Ъ
+//mem
 const byte heb_mem[8] PROGMEM = {
   0b01000,
   0b00111,
@@ -406,7 +461,7 @@ const byte heb_mem[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//Ы
+//nun sofit
 const byte heb_nun_sofit[8] PROGMEM = {
   0b00000,
   0b00111,
@@ -417,7 +472,7 @@ const byte heb_nun_sofit[8] PROGMEM = {
   0b00001,
   0b00001
 };
-//Ь
+//nun
 const byte heb_nun[8] PROGMEM = {
   0b00000,
   0b00111,
@@ -428,7 +483,7 @@ const byte heb_nun[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//Э
+//samech
 const byte heb_samech[8] PROGMEM = {
   0b00000,
   0b01110,
@@ -439,7 +494,7 @@ const byte heb_samech[8] PROGMEM = {
   0b01110,
   0b00000
 };
-//Ю
+//ayin
 const byte heb_ayin[8] PROGMEM = {
   0b00000,
   0b01001,
@@ -450,7 +505,7 @@ const byte heb_ayin[8] PROGMEM = {
   0b11111,
   0b00000
 };
-//Я
+//peh sofit
 const byte heb_peh_sofit[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -461,6 +516,7 @@ const byte heb_peh_sofit[8] PROGMEM = {
   0b00001,
   0b00001
 };
+//peh
 const byte heb_peh[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -470,7 +526,8 @@ const byte heb_peh[8] PROGMEM = {
   0b00001,
   0b11111,
   0b00000
-};//б
+};
+//zadik sofit
 const byte heb_zadik_sofit[8] PROGMEM = {
   0b00000,
   0b10001,
@@ -480,7 +537,8 @@ const byte heb_zadik_sofit[8] PROGMEM = {
   0b00001,
   0b00001,
   0b00001
-};//в
+};
+//zadik
 const byte heb_zadik[8] PROGMEM = {
   0b00000,
   0b10001,
@@ -490,7 +548,8 @@ const byte heb_zadik[8] PROGMEM = {
   0b00001,
   0b11111,
   0b00000
-};//в
+};
+//kuf
 const byte heb_kuf[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -500,7 +559,8 @@ const byte heb_kuf[8] PROGMEM = {
   0b01000,
   0b01000,
   0b01000
-};//г
+};
+//resh
 const byte heb_resh[8] PROGMEM = {
   0b00000,
   0b11111,
@@ -510,7 +570,8 @@ const byte heb_resh[8] PROGMEM = {
   0b00001,
   0b00001,
   0b00000
-};//д
+};
+//shin
 const byte heb_shin[8] PROGMEM = {
   0b00000,
   0b10101,
@@ -520,7 +581,8 @@ const byte heb_shin[8] PROGMEM = {
   0b10101,
   0b11111,
   0b00000
-};//ё
+};
+//tav
 const byte heb_tav[8] PROGMEM = {
   0b00000,
   0b01111,
@@ -530,4 +592,4 @@ const byte heb_tav[8] PROGMEM = {
   0b01001,
   0b11001,
   0b00000
-};//ж
+};

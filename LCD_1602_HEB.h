@@ -21,10 +21,13 @@ public:
 	void setCursor(uint8_t, uint8_t); 
 	uint8_t getCursorCol(); 
 	uint8_t getCursorRow(); 
+  wchar_t *asciiutf8(unsigned char);
 
 private:
   void CharSetToLCD(uint8_t *, uint8_t *);
   void ResetAllIndex();
+  void printwc(const wchar_t);
+  uint8_t mbtowc(wchar_t *, char *, uint8_t);
 
   int symbol_index;//Индекс символа (от 0 до 7)
   uint8_t cursor_col;
@@ -86,3 +89,4 @@ extern const byte heb_kuf[];
 extern const byte heb_resh[];
 extern const byte heb_shin[];
 extern const byte heb_tav[];
+extern wchar_t char_utf8[];
